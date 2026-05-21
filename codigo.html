@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestión con Control de Acceso Avanzado (RBAC)</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            color: #f1f5f9;
+        }
+        [v-cloak] { display: none; }
+        /* Scrollbar personalizado para los paneles */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="font-sans antialiased">
+
+    <div id="app" class="min-h-screen flex flex-col justify-between" v-cloak>
+        
+        <header class="bg-slate-900 border-b border-slate-800 p-4 shadow-xl sticky top-0 z-50">
+            <div class="container mx-auto flex justify-between items-center">
+                <div>
+                    <h1 class="text-xl font-extrabold tracking-wider text-amber-500">
+                        SECURE<span class="text-white">_CORE v2.0</span>
+                    </h1>
+                    <p class="text-[10px] text-slate-400 font-mono">Role-Based Access Control (RBAC) Simulation</p>
+                </div>
+                <div v-if="sesion" class="flex items-center gap-4">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-sm text-slate-200 font-semibold">{{ sesion.usuario }}</p>
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase">
+                            Rol: {{ sesion.rol }}
+                        </span>
+                    </div>
+                    <button @click="logout" class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition dynamic-button cursor-pointer shadow-md shadow-rose-950/20">
+                        Cerrar Sesión
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow container mx-auto p-4 md:p-6 flex items-center justify-center">
+            
+            <div v-if="!sesion" class="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl">
+                <div class="text-center mb-6">
+                    <span class="text-4xl">🔐</span>
+                    <h2 class="text-2xl font-bold text-slate-100 mt-2">Autenticación de Usuarios</h2>
+                    <p class="text-xs text-slate-400 mt-1">Ingresa tus credenciales para acceder al entorno seguro.</p>
+                </div>
+                
+                <div v-if="errorLogin" class="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+                    ⚠️ {{ errorLogin }}
+                </div>
+
+                <form @submit.prevent="login" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Usuario</label>
+                        <input type="text" v-model="form.usuario" required placeholder="admin o user"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Contraseña</label>
+                        <input type="password" v-model="form.password" required placeholder="123456"
+                            class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white text-sm focus:outline-none focus:border-amber-500 transition">
+                    </div>
+                    <button type="submit" 
+                        class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold p-2.5 rounded-lg transition shadow-lg shadow-amber-500/10 cursor-pointer text-sm">
+                        Ingresar de Forma Segura
+                    </button>
+                </form>
+
+                <div class="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-500 space-y-1 bg-slate-950/50 p-3 rounded-lg">
+                    <p class="font-bold text-slate-400 mb-1">Cuentas Preconfiguradas:</p>
+                    <p>• <code class="text-amber-400 font-bold">admin</code> / <code class="text-slate-300">123456</code> (Administrador de Sistemas)</p>
+                    <p>• <code class="text-emerald-400 font-bold">user</code> / <code class="text-slate-300">123456</code> (Usuario Estándar)</p>
+                </div>
+            </div>
+
+            <div v-else class="w-full space-y-6">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow-md">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tu Rol de Acceso</p>
+                            <p class="text-xl font-black text-amber-500 capitalize mt-1">{{ sesion.rol }}</p>
+                        </div>
+                        <span class="text-2xl bg-slate-950 p-2 rounded-lg">🛡️</span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow-md">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tareas Pendientes (Tuyo)</p>
+                            <p class="text-xl font-black text-slate-200 mt-1">{{ tareasFiltradas.filter(t => !t.completada).length }}</p>
+                        </div>
+                        <span class="text-2xl bg-slate-950 p-2 rounded-lg">📋</span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow-md">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Usuarios en la DB</p>
+                            <p class="text-xl font-black text-emerald-400 mt-1">{{ usuariosDB.length }}</p>
+                        </div>
+                        <span class="text-2xl bg-slate-950 p-2 rounded-lg">👥</span>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between shadow-md">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Incidentes Reportados</p>
+                            <p class="text-xl font-black text-rose-400 mt-1">{{ incidentesDB.length }}</p>
+                        </div>
+                        <span class="text-2xl bg-slate-950 p-2 rounded-lg">⚠️</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    <div class="lg:col-span-5 space-y-6 flex flex-col">
+                        
+                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg flex-grow">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-200">📬 Tareas Asignadas a ti</h3>
+                                <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] px-2 py-0.5 font-bold rounded">Acceso Lectura/Escritura</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mb-4">Aquí se listan las tareas de tu departamento asignadas por la administración o autoasignadas.</p>
+
+                            <div class="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                                <div v-for="tarea in tareasFiltradas" :key="tarea.id" 
+                                    class="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-start justify-between gap-3 text-xs">
+                                    <div class="space-y-1">
+                                        <p :class="{'line-through text-slate-500': tarea.completada}" class="text-slate-200 font-medium">
+                                            {{ tarea.texto }}
+                                        </p>
+                                        <p class="text-[10px] text-slate-500">
+                                            Asignado por: <span class="text-slate-400 font-mono">{{ tarea.creador }}</span>
+                                        </p>
+                                    </div>
+                                    <div class="flex gap-1 items-center">
+                                        <button @click="alternarTarea(tarea.id)" 
+                                            :class="tarea.completada ? 'bg-slate-800 text-slate-400' : 'bg-emerald-950 text-emerald-400 border border-emerald-900/50'"
+                                            class="px-2 py-1 rounded text-[10px] font-bold cursor-pointer hover:opacity-80 transition">
+                                            {{ tarea.completada ? 'Reabrir' : 'Completar' }}
+                                        </button>
+                                        <button @click="eliminarTarea(tarea.id)" class="text-rose-500 hover:text-rose-400 px-2 py-1 text-xs font-bold cursor-pointer">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                                <div v-if="tareasFiltradas.length === 0" class="text-center py-8 text-slate-600 text-xs">
+                                    Ninguna tarea activa registrada para tu cuenta.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-lg">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-200">🚀 Centro de Incidentes y Reportes</h3>
+                                <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] px-2 py-0.5 font-bold rounded">Canal Usuario → Admin</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mb-4">Envía reportes de fallas, solicitudes de permisos o estatus críticos de producción al Administrador de forma directa.</p>
+
+                            <form @submit.prevent="enviarIncidente" class="space-y-3">
+                                <div>
+                                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Título del Reporte</label>
+                                    <input type="text" v-model="nuevoIncidente.titulo" required placeholder="Falla en pasarela, Solicitud vacaciones..."
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Detalles de la Solicitud / Gravedad</label>
+                                    <textarea v-model="nuevoIncidente.descripcion" required rows="2" placeholder="Describe los pormenores técnicos o requerimientos aquí..."
+                                        class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"></textarea>
+                                </div>
+                                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-2 text-xs rounded-lg transition cursor-pointer">
+                                    Emitir Reporte Oficial
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+
+                    <div class="lg:col-span-7 space-y-6">
+                        
+                        <div class="bg-slate-900 border p-6 rounded-2xl shadow-lg transition-all duration-300 flex flex-col"
+                            :class="esAdmin ? 'border-slate-800' : 'border-rose-950/40 opacity-20 bg-slate-950/40 select-none pointer-events-none'">
+                            
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-4 border-b border-slate-800">
+                                <div>
+                                    <h3 class="text-sm font-bold uppercase tracking-wider text-slate-100 flex items-center gap-2">
+                                        <span>🛠️</span> Consola Centralizada de Seguridad y Privilegios
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-0.5">Acceso exclusivo para manipulación de políticas, cuentas de usuario y asignaciones.</p>
+                                </div>
+                                <span :class="esAdmin ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'"
+                                    class="px-3 py-1 text-xs font-black rounded-full border self-start sm:self-center">
+                                    {{ esAdmin ? 'ADMIN_PRIVILEGES: ACTIVATED' : 'SISTEMA BLOQUEADO' }}
+                                </span>
+                            </div>
+
+                            <div v-if="!esAdmin" class="text-center py-20 my-auto">
+                                <span class="text-5xl">🔒</span>
+                                <h4 class="text-md font-bold text-rose-400 mt-3">Denegado de Forma Remota</h4>
+                                <p class="text-xs text-slate-500 max-w-sm mx-auto mt-2">Los componentes reactivos de asignación cruzada y visualización de auditoría requieren un token con alcance Root (Admin).</p>
+                            </div>
+
+                            <div v-else class="space-y-6">
+                                
+                                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800/80">
+                                    <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wide mb-3">📍 Delegador Central de Tareas (Asignación Directa)</h4>
+                                    <form @submit.prevent="crearYAsignarTarea" class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                                        <div class="sm:col-span-6">
+                                            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Descripción de la Tarea</label>
+                                            <input type="text" v-model="formAsignar.texto" required placeholder="Ej: Auditar logs de seguridad de la API..."
+                                                class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                                        </div>
+                                        <div class="sm:col-span-4">
+                                            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">ResponsableAsignado</label>
+                                            <select v-model="formAsignar.usuarioDestino" required
+                                                class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                                                <option value="" disabled>Selecciona un usuario...</option>
+                                                <option v-for="u in usuariosDB" :key="u.usuario" :value="u.usuario">
+                                                    {{ u.usuario }} ({{ u.rol }})
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <button type="submit" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold p-2 text-xs rounded-lg transition cursor-pointer">
+                                                Asignar
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    
+                                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                                        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wide">👥 Registrar Cuentas</h4>
+                                        <div>
+                                            <input type="text" v-model="crudForm.usuario" placeholder="Username"
+                                                class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white mb-2">
+                                            <input type="text" v-model="crudForm.password" placeholder="Password"
+                                                class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white mb-2">
+                                            <select v-model="crudForm.rol" 
+                                                class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-white">
+                                                <option value="user">User (Limitado)</option>
+                                                <option value="admin">Admin (Total)</option>
+                                            </select>
+                                        </div>
+                                        <button @click="guardarUsuario" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold p-2 text-xs rounded-lg transition cursor-pointer">
+                                            Guardar Credenciales
+                                        </button>
+                                    </div>
+
+                                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 max-h-[175px] overflow-y-auto">
+                                        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wide mb-2">📋 Directorio Interno</h4>
+                                        <div class="space-y-1.5">
+                                            <div v-for="user in usuariosDB" :key="user.usuario" class="flex justify-between items-center text-xs p-2 bg-slate-900 rounded-lg border border-slate-800/60">
+                                                <div>
+                                                    <span class="font-bold text-slate-200">{{ user.usuario }}</span>
+                                                    <span class="text-[9px] font-mono text-slate-500 ml-2">({{ user.rol }})</span>
+                                                </div>
+                                                <div class="flex gap-1">
+                                                    <button @click="cambiarRol(user.usuario)" class="bg-slate-800 p-1 rounded text-[10px] hover:bg-slate-700 cursor-pointer" title="Invertir Rol">🔄</button>
+                                                    <button @click="eliminarUsuario(user.usuario)" :disabled="user.usuario === sesion.usuario" class="p-1 rounded text-[10px] bg-rose-950/50 text-rose-400 disabled:opacity-20 cursor-pointer">🗑️</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                    <h4 class="text-xs font-bold text-rose-400 uppercase tracking-wide mb-3">⚠️ Inbox de Incidentes Reportados por Personal</h4>
+                                    <div class="space-y-2 max-h-40 overflow-y-auto">
+                                        <div v-for="inc in incidentesDB" :key="inc.id" class="p-2.5 bg-slate-900 rounded-lg border border-l-4 border-rose-500 border-slate-800 text-xs">
+                                            <div class="flex justify-between items-start">
+                                                <h5 class="font-bold text-slate-200">{{ inc.titulo }}</h5>
+                                                <span class="text-[9px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded">Emisor: {{ inc.remitente }}</span>
+                                            </div>
+                                            <p class="text-slate-400 text-[11px] mt-1">{{ inc.descripcion }}</p>
+                                            <div class="text-right mt-1">
+                                                <button @click="resolverIncidente(inc.id)" class="text-[10px] text-emerald-400 font-bold hover:underline cursor-pointer">
+                                                    ✓ Marcar como Solventado
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p v-if="incidentesDB.length === 0" class="text-center text-xs text-slate-600 py-4">No se registran alertas ni incidentes en la cola.</p>
+                                    </div>
+                                </div>
+
+                                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide">🕵️ Logs de Auditoría General (Trazabilidad)</h4>
+                                        <button @click="limpiarLogs" class="text-[9px] text-slate-500 hover:text-slate-300 font-mono underline cursor-pointer">Borrar Historial</button>
+                                    </div>
+                                    <div class="bg-black/40 p-2.5 rounded-lg font-mono text-[10px] text-emerald-400 space-y-1 max-h-32 overflow-y-auto">
+                                        <div v-for="log in logsDB" :key="log.timestamp">
+                                            <span class="text-slate-600">[{{ log.hora }}]</span> 
+                                            <span class="text-amber-500"> ({{ log.actor }})</span>: {{ log.evento }}
+                                        </div>
+                                        <div v-if="logsDB.length === 0" class="text-slate-600 text-center">Sin eventos registrados en la sesión.</div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </main>
+
+        <footer class="bg-slate-950 border-t border-slate-900 p-4 text-center text-xs text-slate-600">
+            Demo Completa de Seguridad Informática • Arquitectura Basada en Roles (RBAC) • Desarrollado para Presentaciones Académicas/Técnicas
+        </footer>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // ESTADO DE SESIÓN Y LOGINS
+                const sesion = ref(null);
+                const errorLogin = ref('');
+                const form = ref({ usuario: '', password: '' });
+
+                // FORMULARIOS DE REGISTRO E INTERACCIÓN
+                const crudForm = ref({ usuario: '', password: '', rol: 'user' });
+                const formAsignar = ref({ texto: '', usuarioDestino: '' });
+                const nuevoIncidente = ref({ titulo: '', descripcion: '' });
+
+                // BASES DE DATOS REACTIVAS (Mocks sincronizados en LocalStorage)
+                const usuariosDB = ref([]);
+                const tareasDB = ref([]);
+                const incidentesDB = ref([]);
+                const logsDB = ref([]);
+
+                // Inicialización de la aplicación
+                onMounted(() => {
+                    // 1. Cargar Usuarios
+                    const localUsers = localStorage.getItem('adv_users_db');
+                    if (localUsers) { usuariosDB.value = JSON.parse(localUsers); } 
+                    else {
+                        usuariosDB.value = [
+                            { usuario: 'admin', password: '123456', rol: 'admin' },
+                            { usuario: 'user', password: '123456', rol: 'user' }
+                        ];
+                        sincronizar('users');
+                    }
+
+                    // 2. Cargar Tareas
+                    const localTareas = localStorage.getItem('adv_tareas_db');
+                    if (localTareas) { tareasDB.value = JSON.parse(localTareas); }
+                    else {
+                        tareasDB.value = [
+                            { id: 1, usuario: 'user', creador: 'admin', texto: 'Actualizar parches del servidor Apache', completada: false },
+                            { id: 2, usuario: 'admin', creador: 'admin', texto: 'Auditar accesos remotos SSH del mes', completada: true }
+                        ];
+                        sincronizar('tareas');
+                    }
+
+                    // 3. Cargar Incidentes
+                    const localIncidentes = localStorage.getItem('adv_incidentes_db');
+                    if (localIncidentes) { incidentesDB.value = JSON.parse(localIncidentes); }
+
+                    // 4. Cargar Logs
+                    const localLogs = localStorage.getItem('adv_logs_db');
+                    if (localLogs) { logsDB.value = JSON.parse(localLogs); }
+
+                    // 5. Cargar Sesión Activa
+                    const localSession = localStorage.getItem('adv_session');
+                    if (localSession) { sesion.value = JSON.parse(localSession); }
+                });
+
+                // Helper de Persistencia Sencilla
+                const sincronizar = (modulo) => {
+                    if (modulo === 'users') localStorage.setItem('adv_users_db', JSON.stringify(usuariosDB.value));
+                    if (modulo === 'tareas') localStorage.setItem('adv_tareas_db', JSON.stringify(tareasDB.value));
+                    if (modulo === 'incidentes') localStorage.setItem('adv_incidentes_db', JSON.stringify(incidentesDB.value));
+                    if (modulo === 'logs') localStorage.setItem('adv_logs_db', JSON.stringify(logsDB.value));
+                };
+
+                // Helper de Registro de Logs de Auditoría
+                const registrarLog = (actor, evento) => {
+                    const ahora = new Date();
+                    const horaFormateada = ahora.toTimeString().split(' ')[0];
+                    logsDB.value.unshift({
+                        timestamp: Date.now(),
+                        hora: horaFormateada,
+                        actor: actor,
+                        evento: evento
+                    });
+                    sincronizar('logs');
+                };
+
+                // EVALUADORES DE SEGURIDAD COMPUTADOS
+                const esAdmin = computed(() => sesion.value && sesion.value.rol === 'admin');
+                
+                // Filtro Dinámico: Cada usuario ve sus tareas exclusivas
+                const tareasFiltradas = computed(() => {
+                    if (!sesion.value) return [];
+                    return tareasDB.value.filter(t => t.usuario.toLowerCase() === sesion.value.usuario.toLowerCase());
+                });
+
+                // AUTENTICACIÓN
+                const login = () => {
+                    errorLogin.value = '';
+                    const cuenta = usuariosDB.value.find(
+                        u => u.usuario.toLowerCase() === form.value.usuario.toLowerCase() && u.password === form.value.password
+                    );
+
+                    if (cuenta) {
+                        sesion.value = { usuario: cuenta.usuario, rol: cuenta.rol };
+                        localStorage.setItem('adv_session', JSON.stringify(sesion.value));
+                        registrarLog(cuenta.usuario, `Inicio de sesión exitoso desde el navegador con Rol: [${cuenta.rol}]`);
+                        form.value = { usuario: '', password: '' };
+                    } else {
+                        errorLogin.value = 'Fallo de autenticación. Verifica las credenciales.';
+                        registrarLog('SISTEMA', `Intento fallido de login con el usuario: ${form.value.usuario}`);
+                    }
+                };
+
+                const logout = () => {
+                    if (sesion.value) {
+                        registrarLog(sesion.value.usuario, 'Sesión destruida y cerrada voluntariamente.');
+                        sesion.value = null;
+                        localStorage.removeItem('adv_session');
+                    }
+                };
+
+                // OPERACIONES DEL ADMINISTRADOR (CRUD & DELEGACIÓN)
+                const crearYAsignarTarea = () => {
+                    if (!formAsignar.value.texto || !formAsignar.value.usuarioDestino) return;
+                    
+                    const nueva = {
+                        id: Date.now(),
+                        usuario: formAsignar.value.usuarioDestino,
+                        creador: sesion.value.usuario,
+                        texto: formAsignar.value.texto.trim(),
+                        completada: false
+                    };
+
+                    tareasDB.value.push(nueva);
+                    sincronizar('tareas');
+                    registrarLog(sesion.value.usuario, `Asignó una nueva tarea a [${nueva.usuario}]: "${nueva.texto}"`);
+                    formAsignar.value = { texto: '', usuarioDestino: '' };
+                };
+
+                const guardarUsuario = () => {
+                    if (!crudForm.value.usuario || !crudForm.value.password) return;
+                    const usernameClean = crudForm.value.usuario.trim().toLowerCase();
+                    const index = usuariosDB.value.findIndex(u => u.usuario.toLowerCase() === usernameClean);
+
+                    if (index !== -1) {
+                        usuariosDB.value[index].password = crudForm.value.password;
+                        usuariosDB.value[index].rol = crudForm.value.rol;
+                        registrarLog(sesion.value.usuario, `Modificó políticas de cuenta de: [${usernameClean}] cambiando rol a [${crudForm.value.rol}]`);
+                    } else {
+                        usuariosDB.value.push({
+                            usuario: usernameClean,
+                            password: crudForm.value.password,
+                            rol: crudForm.value.rol
+                        });
+                        registrarLog(sesion.value.usuario, `Creó un nuevo registro de acceso para: [${usernameClean}]`);
+                    }
+                    sincronizar('users');
+                    crudForm.value = { usuario: '', password: '', rol: 'user' };
+                };
+
+                const cambiarRol = (username) => {
+                    const u = usuariosDB.value.find(user => user.usuario === username);
+                    if (u) {
+                        u.rol = u.rol === 'admin' ? 'user' : 'admin';
+                        sincronizar('users');
+                        registrarLog(sesion.value.usuario, `Alteró privilegios en tiempo de ejecución de: ${username} a [${u.rol}]`);
+                        
+                        // Si el admin en línea se degrada accidentalmente
+                        if (sesion.value.usuario === username) {
+                            sesion.value.rol = u.rol;
+                            localStorage.setItem('adv_session', JSON.stringify(sesion.value));
+                        }
+                    }
+                };
+
+                const eliminarUsuario = (username) => {
+                    usuariosDB.value = usuariosDB.value.filter(u => u.usuario !== username);
+                    sincronizar('users');
+                    registrarLog(sesion.value.usuario, `Eliminó la cuenta e historiales de acceso de: ${username}`);
+                };
+
+                const resolverIncidente = (id) => {
+                    const inc = incidentesDB.value.find(i => i.id === id);
+                    incidentesDB.value = incidentesDB.value.filter(i => i.id !== id);
+                    sincronizar('incidentes');
+                    if (inc) registrarLog(sesion.value.usuario, `Solventó y archivó el incidente: "${inc.titulo}" enviado por [${inc.remitente}]`);
+                };
+
+                const limpiarLogs = () => {
+                    logsDB.value = [];
+                    sincronizar('logs');
+                };
+
+                // OPERACIONES DEL USUARIO LIMITADO (O ACCIONES COMUNES)
+                const alternarTarea = (id) => {
+                    const t = tareasDB.value.find(tarea => tarea.id === id);
+                    if (t) {
+                        t.completada = !t.completada;
+                        sincronizar('tareas');
+                        registrarLog(sesion.value.usuario, `Cambió estado de tarea "${t.texto}" a [${t.completada ? 'COMPLETADA' : 'PENDIENTE'}]`);
+                    }
+                };
+
+                const eliminarTarea = (id) => {
+                    const t = tareasDB.value.find(tarea => tarea.id === id);
+                    tareasDB.value = tareasDB.value.filter(tarea => tarea.id !== id);
+                    sincronizar('tareas');
+                    if (t) registrarLog(sesion.value.usuario, `Eliminó físicamente la tarea: "${t.texto}"`);
+                };
+
+                const enviarIncidente = () => {
+                    if (!nuevoIncidente.value.titulo || !nuevoIncidente.value.descripcion) return;
+                    
+                    const inc = {
+                        id: Date.now(),
+                        remitente: sesion.value.usuario,
+                        titulo: nuevoIncidente.value.titulo.trim(),
+                        descripcion: nuevoIncidente.value.descripcion.trim()
+                    };
+
+                    incidentesDB.value.push(inc);
+                    sincronizar('incidentes');
+                    registrarLog(sesion.value.usuario, `Emitió un reporte crítico al Administrador: "${inc.titulo}"`);
+                    nuevoIncidente.value = { titulo: '', descripcion: '' };
+                    alert("🚨 Reporte enviado con éxito al buzón del Administrador.");
+                };
+
+                return {
+                    sesion, errorLogin, form, crudForm, formAsignar, nuevoIncidente,
+                    usuariosDB, tareasDB, incidentesDB, logsDB,
+                    esAdmin, tareasFiltradas,
+                    login, logout, crearYAsignarTarea, guardarUsuario, cambiarRol, eliminarUsuario, resolverIncidente, limpiarLogs,
+                    alternarTarea, eliminarTarea, enviarIncidente
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
